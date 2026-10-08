@@ -1,0 +1,7 @@
+# Copy this file to terraform.tfvars and edit it. terraform.tfvars is git-ignored.
+alert_email = "you@example.com"
+
+# Optional overrides:
+# aws_region         = "eu-west-3"
+# monthly_budget_usd = 5
+# create_budget      = true

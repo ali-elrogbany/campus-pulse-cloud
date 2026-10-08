@@ -5,15 +5,15 @@ Built on AWS (Lambda, API Gateway, DynamoDB, Cognito) and deployed with Terrafor
 
 ## Repository layout
 
-| Folder            | Content                                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------------------- |
-| `infra/`          | Terraform: all AWS resources (`main.tf` core, `auth.tf` login/roles, `routes_read.tf` read routes) |
-| `lambdas/ingest/` | `POST /events`: validates and stores an event                                                      |
-| `lambdas/query/`  | `GET /events`, `/stats`, `/alerts`: role check, then query                                         |
-| `simulator/`      | Python script that generates fake campus events                                                    |
-| `scripts/`        | `create_user.py` and `get_token.py`: manage and log in users                                       |
-| `tests/`          | Automated tests (run locally, no AWS account needed)                                               |
-| `docs/`           | Contracts (event format, API, roles, table design), report material                                |
+| Folder | Content |
+|---|---|
+| `infra/` | Terraform: all AWS resources (`main.tf` core, `auth.tf` login/roles, `routes_read.tf` read routes, `network.tf` private network, `monitoring.tf` dashboard and alarms) |
+| `lambdas/ingest/` | `POST /events`: validates and stores an event |
+| `lambdas/query/` | `GET /events`, `/stats`, `/alerts`: role check, then query |
+| `simulator/` | Python script that generates fake campus events |
+| `scripts/` | `create_user.py` and `get_token.py`: manage and log in users |
+| `tests/` | Automated tests (run locally, no AWS account needed) |
+| `docs/` | Contracts (event format, API, roles, table design), `networking.md`, `observability.md`, report material |
 
 ## Prerequisites
 
@@ -34,6 +34,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+The tests include "guardrails" that read the Terraform files and fail if someone adds a paid resource,
+an open firewall rule or an unprotected route.
+
 ## 2. Deploy (or update)
 
 ```bash
@@ -44,7 +47,11 @@ terraform plan                                  # read it: + create, ~ change, -
 terraform apply                                 # type "yes"
 ```
 
-AWS sends a confirmation email for the budget alert. Screenshot the budget in the console for the report.
+AWS sends two emails: the budget alert confirmation, and an **SNS subscription confirmation** for the alarms.
+**Click "Confirm subscription" in the SNS email.** Until you do, no alarm email can reach you.
+
+Slice 3 puts the Lambdas inside a VPC. Expect `terraform plan` to show about 20 new resources
+(network, alarms, dashboard) and the two Lambdas updated in place. The first apply can take a few minutes.
 
 ## 3. Create users (one admin, one student)
 
@@ -116,7 +123,32 @@ curl -i -X POST "$CAMPUSPULSE_URL/events" -H "x-api-key: $CAMPUSPULSE_API_KEY" \
 
 Windows PowerShell: use `$env:NAME = ...` instead of `export NAME=...`, and `curl.exe` instead of `curl`.
 
-## 5. Tear down (do this after every work session when you are not demoing)
+## 5. Check the network and the dashboard
+
+```bash
+terraform -chdir=infra output dashboard_url      # open this in the browser, then run the simulator
+VPC=$(terraform -chdir=infra output -raw vpc_id)
+
+aws ec2 describe-route-tables --filters Name=vpc-id,Values=$VPC --query 'RouteTables[].Routes'   # no 0.0.0.0/0
+aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=$VPC                   # empty
+aws ec2 describe-nat-gateways --filter Name=vpc-id,Values=$VPC --query 'NatGateways[?State!=`deleted`]'  # empty
+aws lambda get-function-configuration --function-name campuspulse-ingest --query VpcConfig        # two subnets
+```
+
+Details and screenshots to take: `docs/networking.md`. Dashboard, alarms and Logs Insights queries: `docs/observability.md`.
+
+## 6. Trigger an alarm on purpose
+
+Six refused requests in a row (a student calling the admin-only route) trip the "access denied spike" alarm.
+
+```bash
+for i in $(seq 1 6); do curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: $STUDENT_TOKEN" "$CAMPUSPULSE_URL/alerts"; done
+```
+
+Within roughly 5 to 10 minutes: CloudWatch > Alarms shows `campuspulse-access-denied-spike` in red,
+and an email arrives (if you confirmed the SNS subscription). Screenshot all three. It turns green again by itself.
+
+## 7. Tear down (do this after every work session when you are not demoing)
 
 ```bash
 cd infra
@@ -125,6 +157,7 @@ terraform destroy
 
 Screenshot the empty console afterwards: the brief asks for evidence that unused resources were removed.
 After a destroy, the Cognito users are gone too: run step 3 again after the next deploy.
+The destroy can take several extra minutes: Lambda releases its network interfaces slowly. Be patient, do not interrupt it.
 
 ## Evidence to collect as you go (for the report)
 
@@ -135,4 +168,8 @@ After a destroy, the Cognito users are gone too: run step 3 again after the next
 - Cognito user pool and its two groups in the console
 - CloudWatch log lines: `event_stored`, `event_rejected`, `access_denied`
 - DynamoDB console showing stored items
+- CloudWatch dashboard `campuspulse-operations` with live traffic
+- The four alarms, SNS confirmation email, and the alarm email from step 6
+- VPC, subnets, route table, endpoint and security group in the console (or the CLI output from step 5)
+- Logs Insights results (see `docs/observability.md`)
 - `pytest` passing

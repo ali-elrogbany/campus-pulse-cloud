@@ -236,3 +236,41 @@ def test_create_user_then_login_returns_a_token(monkeypatch):
 
         with pytest.raises(idp.exceptions.NotAuthorizedException):
             get_token_script.get_id_token(idp, client_id, "alice@example.com", "wrong-password")
+
+
+# ---------------------------------------------------------------- log markers used by the CloudWatch alarms
+
+
+def _marker_lines(caplog, marker):
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith(marker + " ")]
+    assert lines, f"no log line starts with the marker '{marker}'"
+    return lines
+
+
+def test_denied_requests_log_a_standalone_marker_with_json_details(aws, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        get("/alerts", groups="student")
+    marker, details = _marker_lines(caplog, "access_denied")[0].split(" ", 1)
+    assert marker == "access_denied"
+    parsed = json.loads(details)
+    assert parsed["route"] == "/alerts" and parsed["groups"] == ["student"]
+
+
+def test_rejected_and_stored_events_log_their_markers(aws, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        send("good")
+        send("bad", event_type="banana")
+    assert json.loads(_marker_lines(caplog, "event_stored")[0].split(" ", 1)[1])["event_id"] == "good"
+    assert "event_type" in _marker_lines(caplog, "event_rejected")[0]
+
+
+def test_logs_never_contain_the_request_body_or_tokens(aws, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        send("evt-secret-check", event_type="banana", room="SENSITIVE-ROOM")
+    assert "SENSITIVE-ROOM" not in caplog.text

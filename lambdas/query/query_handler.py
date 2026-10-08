@@ -36,6 +36,16 @@ STATS_MAX_ITEMS = 5000  # hard cap on events aggregated per /stats request
 _table = None
 
 
+def _log(level: int, marker: str, **fields) -> None:
+    """Write one log line: a plain marker word, then the details as JSON.
+
+    Example:  access_denied {"route": "/alerts", "user": "bob@example.com", ...}
+    The marker stands alone, so CloudWatch metric filters and Logs Insights can find and
+    count it reliably (see infra/monitoring.tf). Never log tokens or passwords.
+    """
+    logger.log(level, "%s %s", marker, json.dumps(fields))
+
+
 def _get_table():
     global _table
     if _table is None:
@@ -212,10 +222,8 @@ def lambda_handler(event, context):
     groups = parse_groups(claims.get("cognito:groups"))
     if not is_allowed(route, groups):
         # Log who was refused (useful evidence for the security section), never the token.
-        logger.warning(
-            json.dumps({"msg": "access_denied", "route": route, "user": claims.get("email"), "groups": sorted(groups)})
-        )
+        _log(logging.WARNING, "access_denied", route=route, user=claims.get("email"), groups=sorted(groups))
         return _response(403, {"error": "forbidden", "message": "Your role may not access this resource"})
 
-    logger.info(json.dumps({"msg": "read_request", "route": route, "user": claims.get("email")}))
+    _log(logging.INFO, "read_request", route=route, user=claims.get("email"))
     return handler(event.get("queryStringParameters") or {})

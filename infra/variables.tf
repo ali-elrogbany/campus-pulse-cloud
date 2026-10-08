@@ -27,6 +27,12 @@ variable "monthly_budget_usd" {
   default     = 5
 }
 
+variable "vpc_cidr" {
+  description = "IP range of the private network. The two private subnets are carved out of it."
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
 variable "log_retention_days" {
   description = "How long CloudWatch keeps Lambda logs. Short retention keeps logging inside the free tier."
   type        = number

@@ -16,6 +16,16 @@ logger.setLevel(logging.INFO)
 _table = None
 
 
+def _log(level: int, marker: str, **fields) -> None:
+    """Write one log line: a plain marker word, then the details as JSON.
+
+    Example:  event_stored {"event_id": "evt-1", "event_type": "occupancy"}
+    The marker stands alone, so CloudWatch metric filters and Logs Insights can find and
+    count it reliably (see infra/monitoring.tf). Never put secrets or full request bodies here.
+    """
+    logger.log(level, "%s %s", marker, json.dumps(fields))
+
+
 def _get_table():
     """Create the DynamoDB client once per container and reuse it on warm invocations."""
     global _table
@@ -42,7 +52,7 @@ def lambda_handler(event, context):
         item = validate_event(payload)
     except ValidationError as exc:
         # Log the reasons only, never the full body.
-        logger.warning(json.dumps({"msg": "event_rejected", "errors": exc.errors}))
+        _log(logging.WARNING, "event_rejected", errors=exc.errors)
         return _response(400, {"error": "validation_failed", "details": exc.errors})
 
     day = parse_timestamp(item["timestamp"]).strftime("%Y-%m-%d")
@@ -63,14 +73,11 @@ def lambda_handler(event, context):
         logger.exception("dynamodb_put_failed")
         return _response(500, {"error": "internal_error"})
 
-    logger.info(
-        json.dumps(
-            {
-                "msg": "event_stored",
-                "event_id": item["event_id"],
-                "event_type": item["event_type"],
-                "severity": item["severity"],
-            }
-        )
+    _log(
+        logging.INFO,
+        "event_stored",
+        event_id=item["event_id"],
+        event_type=item["event_type"],
+        severity=item["severity"],
     )
     return _response(201, {"status": "stored", "event_id": item["event_id"]})

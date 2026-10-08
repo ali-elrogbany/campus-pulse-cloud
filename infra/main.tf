@@ -82,6 +82,22 @@ data "aws_iam_policy_document" "ingest" {
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["${aws_cloudwatch_log_group.ingest.arn}:*"]
   }
+
+  # Lambda attaches a network interface to the VPC on the function's behalf. AWS requires
+  # these actions on all resources ("*"); they are the same six actions as the AWS-managed
+  # AWSLambdaVPCAccessExecutionRole, without its broad CloudWatch Logs permissions.
+  statement {
+    sid = "AttachToVpc"
+    actions = [
+      "ec2:CreateNetworkInterface",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeSubnets",
+      "ec2:DeleteNetworkInterface",
+      "ec2:AssignPrivateIpAddresses",
+      "ec2:UnassignPrivateIpAddresses",
+    ]
+    resources = ["*"]
+  }
 }
 
 data "aws_iam_policy_document" "query" {
@@ -95,6 +111,19 @@ data "aws_iam_policy_document" "query" {
     sid       = "WriteLogs"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["${aws_cloudwatch_log_group.query.arn}:*"]
+  }
+
+  statement {
+    sid = "AttachToVpc"
+    actions = [
+      "ec2:CreateNetworkInterface",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeSubnets",
+      "ec2:DeleteNetworkInterface",
+      "ec2:AssignPrivateIpAddresses",
+      "ec2:UnassignPrivateIpAddresses",
+    ]
+    resources = ["*"]
   }
 }
 
@@ -145,7 +174,21 @@ resource "aws_lambda_function" "ingest" {
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.ingest, aws_iam_role_policy.ingest]
+  # Run inside the private network (network.tf), spread over two Availability Zones.
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+    security_group_ids = [aws_security_group.lambda.id]
+  }
+
+  # The path to DynamoDB must exist before the function can be used.
+  depends_on = [
+    aws_cloudwatch_log_group.ingest,
+    aws_iam_role_policy.ingest,
+    aws_vpc_endpoint.dynamodb,
+    aws_vpc_security_group_egress_rule.lambda_to_dynamodb,
+    aws_route_table_association.private_a,
+    aws_route_table_association.private_b,
+  ]
 }
 
 resource "aws_lambda_function" "query" {
@@ -164,7 +207,19 @@ resource "aws_lambda_function" "query" {
     }
   }
 
-  depends_on = [aws_cloudwatch_log_group.query, aws_iam_role_policy.query]
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+    security_group_ids = [aws_security_group.lambda.id]
+  }
+
+  depends_on = [
+    aws_cloudwatch_log_group.query,
+    aws_iam_role_policy.query,
+    aws_vpc_endpoint.dynamodb,
+    aws_vpc_security_group_egress_rule.lambda_to_dynamodb,
+    aws_route_table_association.private_a,
+    aws_route_table_association.private_b,
+  ]
 }
 
 # -----------------------------------------------------------------------------

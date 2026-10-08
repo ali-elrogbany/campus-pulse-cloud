@@ -24,6 +24,16 @@ output "aws_region" {
   value       = var.aws_region
 }
 
+output "dashboard_url" {
+  description = "Open this in your browser to see the CloudWatch operations dashboard."
+  value       = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${aws_cloudwatch_dashboard.main.dashboard_name}"
+}
+
+output "vpc_id" {
+  description = "ID of the private network the Lambdas run in."
+  value       = aws_vpc.main.id
+}
+
 output "table_name" {
   description = "Name of the DynamoDB events table."
   value       = aws_dynamodb_table.events.name

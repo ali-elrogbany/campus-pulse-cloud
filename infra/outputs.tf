@@ -9,6 +9,21 @@ output "api_key" {
   sensitive   = true
 }
 
+output "user_pool_id" {
+  description = "Cognito user pool ID (used by scripts/create_user.py)."
+  value       = aws_cognito_user_pool.main.id
+}
+
+output "user_pool_client_id" {
+  description = "Cognito app client ID (used by scripts/get_token.py)."
+  value       = aws_cognito_user_pool_client.app.id
+}
+
+output "aws_region" {
+  description = "Region everything was deployed to."
+  value       = var.aws_region
+}
+
 output "table_name" {
   description = "Name of the DynamoDB events table."
   value       = aws_dynamodb_table.events.name

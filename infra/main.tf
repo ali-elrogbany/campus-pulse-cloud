@@ -244,13 +244,14 @@ resource "aws_api_gateway_integration" "post_events" {
   uri                     = aws_lambda_function.ingest.invoke_arn
 }
 
-# GET /events - TEMPORARILY OPEN. Slice 2 replaces this with a Cognito authorizer.
+# GET /events - requires a valid Cognito login token (slice 2; was open in slice 1).
+# The role check (ops_admin or student) happens inside the query Lambda.
 resource "aws_api_gateway_method" "get_events" {
-  rest_api_id      = aws_api_gateway_rest_api.api.id
-  resource_id      = aws_api_gateway_resource.events.id
-  http_method      = "GET"
-  authorization    = "NONE"
-  api_key_required = false
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.events.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
 }
 
 resource "aws_api_gateway_integration" "get_events" {
@@ -295,8 +296,18 @@ resource "aws_api_gateway_deployment" "api" {
       aws_api_gateway_integration.post_events.uri,
       aws_api_gateway_method.get_events.id,
       aws_api_gateway_method.get_events.authorization,
+      aws_api_gateway_method.get_events.authorizer_id,
       aws_api_gateway_integration.get_events.id,
       aws_api_gateway_integration.get_events.uri,
+      aws_api_gateway_authorizer.cognito.id,
+      aws_api_gateway_resource.stats.id,
+      aws_api_gateway_method.get_stats.id,
+      aws_api_gateway_method.get_stats.authorizer_id,
+      aws_api_gateway_integration.get_stats.id,
+      aws_api_gateway_resource.alerts.id,
+      aws_api_gateway_method.get_alerts.id,
+      aws_api_gateway_method.get_alerts.authorizer_id,
+      aws_api_gateway_integration.get_alerts.id,
     ]))
   }
 

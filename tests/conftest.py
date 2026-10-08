@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # plain name (e.g. "from validation import ..."). Mirror that here.
 sys.path.insert(0, str(ROOT / "lambdas" / "ingest"))
 sys.path.insert(0, str(ROOT / "lambdas" / "query"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 os.environ.setdefault("TABLE_NAME", "test-table")
 os.environ.setdefault("EVENT_TTL_DAYS", "30")

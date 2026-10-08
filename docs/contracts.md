@@ -22,27 +22,40 @@ Unknown fields are dropped, not stored.
 
 ## 2. API
 
-| Method | Path | Purpose | Auth (final target) | Auth (slice 1) |
-|---|---|---|---|---|
-| POST | `/events` | Submit one event | API key (simulator) | API key |
-| GET | `/events` | Latest events | Cognito JWT, any role | **open (temporary)** |
-| GET | `/stats` | Aggregated statistics | Cognito JWT, any role | not built yet |
-| GET | `/alerts` | Warning and critical events | Cognito JWT, `ops_admin` only | not built yet |
+| Method | Path | Purpose | Who may call it |
+|---|---|---|---|
+| POST | `/events` | Submit one event | Simulator, with the API key (`x-api-key` header) |
+| GET | `/events` | Latest events | Logged-in user in group `ops_admin` or `student` |
+| GET | `/stats` | Aggregated statistics | Logged-in user in group `ops_admin` or `student` |
+| GET | `/alerts` | Warning and critical events | Logged-in user in group **`ops_admin` only** |
 
-`POST /login` from Appendix B is replaced by Cognito's hosted login / token endpoint.
+`POST /login` from Appendix B is replaced by Cognito: a user logs in with Cognito (see
+`scripts/get_token.py`) and sends the resulting token in the `Authorization` header.
 
-### Status codes for `POST /events`
+### How a request is checked (defence in depth)
+
+1. **API Gateway** checks the API key (POST) or verifies the Cognito token's signature and
+   expiry (GET). Failure: `403` (bad API key) or `401` (missing/invalid token). No Lambda runs.
+2. **Lambda** reads the user's group from the verified token and applies the route's role rule.
+   Failure: `403 forbidden`. A valid user in *no* known group is also refused.
+3. **Lambda** validates all input. Failure: `400`.
+
+### Status codes
 
 | Code | Meaning |
 |---|---|
-| 201 | Stored |
-| 400 | Malformed JSON or failed validation (details in the body) |
-| 403 | Missing or invalid API key |
-| 409 | An event with the same `event_id` and timestamp already exists |
-| 429 | Throttled by the usage plan |
+| 200 / 201 | Success (201 = event stored) |
+| 400 | Malformed JSON, failed validation, or a bad query parameter (details in the body) |
+| 401 | Missing, expired or invalid login token (GET routes) |
+| 403 | Missing/invalid API key (POST), or the user's role is not allowed (GET) |
+| 404 | Unknown route |
+| 409 | An event with the same `event_id` and timestamp already exists (POST) |
+| 429 | Throttled by the usage plan / stage limits |
 | 500 | Unexpected error (details only in CloudWatch logs) |
 
-### Query parameters for `GET /events`
+### Query parameters
+
+`GET /events`
 
 | Parameter | Default | Limits | Meaning |
 |---|---|---|---|
@@ -51,18 +64,43 @@ Unknown fields are dropped, not stored.
 | `building` | none | | Filter by building |
 | `event_type` | none | | Filter by event type |
 
+`GET /stats`
+
+| Parameter | Default | Limits | Meaning |
+|---|---|---|---|
+| `hours` | 24 | 1-168 | Size of the look-back window |
+
+Response fields: `total_events`, `by_type`, `by_severity`, `buildings` (per building: `events`,
+`alerts`, `energy_kwh`, `avg_temperature_c`, `avg_humidity_pct`), `rooms` (latest occupancy per
+room, with `occupied` and `overloaded` flags), `overloaded_rooms`, `top_energy_building`,
+`window_hours`, `generated_at`, and `truncated` (true if the safety cap of 5,000 events was hit,
+so the numbers may be incomplete).
+
+`GET /alerts`
+
+| Parameter | Default | Limits | Meaning |
+|---|---|---|---|
+| `limit` | 50 | 1-200 | Max alerts returned |
+| `hours` | 24 | 1-168 | Size of the look-back window |
+| `severity` | both | `warning` or `critical` | Restrict to one severity |
+
 ## 3. DynamoDB table `campuspulse-events`
 
 | Key | Value | Why |
 |---|---|---|
 | Partition key `pk` | `EVENT#YYYY-MM-DD` (UTC day of the event) | One partition per day. "Latest events" is a cheap Query on today's partition, not a table Scan. |
-| Sort key `sk` | `<timestamp>#<event_id>` | Sorted by time, so newest-first is a single flag. Also makes duplicates detectable. |
+| Sort key `sk` | `<timestamp>#<event_id>` | Sorted by time, so newest-first is a single flag, and "everything since 09:00" is a cheap range condition. Also makes duplicates detectable. |
 | `expires_at` | epoch seconds, now + 30 days | DynamoDB TTL deletes old rows for free, which keeps storage inside the free tier. |
 
 Known trade-off: all writes of one day go to one partition. That is fine for a campus-scale prototype
 and for the load test; for millions of events per day we would add a shard suffix to `pk`.
 
-## 4. Cognito groups (next slice)
+## 4. Roles (Cognito groups)
 
-- `ops_admin`: can call every endpoint, including `/alerts`
-- `student`: can call `/events` and `/stats` only
+| Group | May call |
+|---|---|
+| `ops_admin` | `/events`, `/stats`, `/alerts` |
+| `student` | `/events`, `/stats` |
+
+Rules: accounts are created only by an administrator (no public sign-up). A user with no group,
+or an unknown group, is refused everywhere. A user in both groups gets the union of permissions.

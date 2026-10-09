@@ -29,6 +29,16 @@ resource "aws_dynamodb_table" "events" {
     attribute_name = "expires_at"
     enabled        = true
   }
+
+  # DESIGN DECISION: point-in-time recovery (continuous backup, restore to any second in the
+  # last 35 days) is deliberately NOT enabled here. It is not covered by the AWS Free Tier
+  # (billed per GB of table size), and the prototype holds only simulated data that can be
+  # regenerated. A production deployment should enable it; see docs/resilience.md for the
+  # reasoning, the cost, and the three lines that turn it on:
+  #
+  #   point_in_time_recovery {
+  #     enabled = true
+  #   }
 }
 
 # -----------------------------------------------------------------------------

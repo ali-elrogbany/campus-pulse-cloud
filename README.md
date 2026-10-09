@@ -11,9 +11,9 @@ Built on AWS (Lambda, API Gateway, DynamoDB, Cognito) and deployed with Terrafor
 | `lambdas/ingest/` | `POST /events`: validates and stores an event |
 | `lambdas/query/` | `GET /events`, `/stats`, `/alerts`: role check, then query |
 | `simulator/` | Python script that generates fake campus events |
-| `scripts/` | `create_user.py` and `get_token.py`: manage and log in users |
+| `scripts/` | `create_user.py`, `get_token.py` (users), `load_test.py` (load test), `cost_estimate.py` (cost tables) |
 | `tests/` | Automated tests (run locally, no AWS account needed) |
-| `docs/` | Contracts (event format, API, roles, table design), `networking.md`, `observability.md`, report material |
+| `docs/` | Contracts (event format, API, roles, table design), `networking.md`, `observability.md`, `resilience.md`, `cost-analysis.md`: report material |
 
 ## Prerequisites
 
@@ -148,7 +148,30 @@ for i in $(seq 1 6); do curl -s -o /dev/null -w "%{http_code}\n" -H "Authorizati
 Within roughly 5 to 10 minutes: CloudWatch > Alarms shows `campuspulse-access-denied-spike` in red,
 and an email arrives (if you confirmed the SNS subscription). Screenshot all three. It turns green again by itself.
 
-## 7. Tear down (do this after every work session when you are not demoing)
+## 7. Load test
+
+```bash
+python scripts/load_test.py | tee load-test-output.txt
+```
+
+Sends 300 requests at 8 per second, then a burst of 200 at once (500 requests, about 5% of the daily quota).
+Expect the steady phase to be all HTTP 201 and the burst to contain many HTTP 429 (refused by the throttle) and
+**no 5xx**. Open the dashboard straight afterwards and screenshot it (the 429s show as 4XX errors; 5XX stays flat),
+then copy the numbers into `docs/resilience.md`. Slice 4 changes no infrastructure: `terraform plan` shows
+"No changes" if slice 3 is deployed.
+
+## 8. Cost estimate
+
+```bash
+python scripts/cost_estimate.py              # readable
+python scripts/cost_estimate.py --markdown   # for the report
+```
+
+Read `docs/cost-analysis.md` first: it explains the assumptions and which prices still need checking for Paris.
+After the load test, put your measured Lambda durations into the script (`ingest_ms`, `query_ms`) and re-run it.
+After a few days, screenshot Billing > Cost Explorer next to the estimate.
+
+## 9. Tear down (do this after every work session when you are not demoing)
 
 ```bash
 cd infra
@@ -172,4 +195,7 @@ The destroy can take several extra minutes: Lambda releases its network interfac
 - The four alarms, SNS confirmation email, and the alarm email from step 6
 - VPC, subnets, route table, endpoint and security group in the console (or the CLI output from step 5)
 - Logs Insights results (see `docs/observability.md`)
+- Load test output and the dashboard right after it (429s visible as 4XX, 5XX flat)
+- Cost estimate output, and Cost Explorer after a few days
+- Empty console after `terraform destroy`
 - `pytest` passing

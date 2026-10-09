@@ -5,11 +5,11 @@ helper in both Lambdas.
 
 ## The three pillars, as implemented
 
-| Pillar      | What we have                                                                                                                                                           | Where to see it                                                         |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **Logs**    | Every Lambda writes one line per important event: `event_stored`, `event_rejected`, `read_request`, `access_denied`, plus crashes with stack traces. 14-day retention. | CloudWatch > Log groups > `/aws/lambda/campuspulse-ingest` and `-query` |
-| **Metrics** | AWS built-in (API requests, 4xx/5xx, latency; Lambda invocations, errors, duration; DynamoDB capacity and throttles) plus 2 custom metrics derived from logs           | CloudWatch > Dashboards > `campuspulse-operations`                      |
-| **Alarms**  | 4 alarms (below) that email the ops team through SNS                                                                                                                   | CloudWatch > Alarms                                                     |
+| Pillar | What we have | Where to see it |
+|---|---|---|
+| **Logs** | Every Lambda writes one line per important event: `event_stored`, `event_rejected`, `read_request`, `access_denied`, plus crashes with stack traces. 14-day retention. | CloudWatch > Log groups > `/aws/lambda/campuspulse-ingest` and `-query` |
+| **Metrics** | AWS built-in (API requests, 4xx/5xx, latency; Lambda invocations, errors, duration; DynamoDB capacity and throttles) plus 2 custom metrics derived from logs | CloudWatch > Dashboards > `campuspulse-operations` |
+| **Alarms** | 4 alarms (below) that email the ops team through SNS | CloudWatch > Alarms |
 
 **Log line format.** `marker {json details}`, for example
 `access_denied {"route": "/alerts", "user": "student@example.com", "groups": ["student"]}`.
@@ -18,12 +18,12 @@ Logs never contain passwords, tokens, API keys or full request bodies (a test en
 
 ## Alarms
 
-| Alarm                              | Fires when                         | Meaning                                                                       | First thing to check             |
-| ---------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------- | -------------------------------- |
-| `campuspulse-api-5xx`              | 1+ server errors in 5 min          | The API failed a request                                                      | Lambda log groups, newest first  |
-| `campuspulse-ingest-lambda-errors` | 1+ crashes in 5 min                | The ingest function threw an unhandled error or timed out                     | `/aws/lambda/campuspulse-ingest` |
-| `campuspulse-query-lambda-errors`  | same                               | Same, read side                                                               | `/aws/lambda/campuspulse-query`  |
-| `campuspulse-access-denied-spike`  | 5+ refused requests (403) in 5 min | Someone is probing routes their role cannot use, or a client is misconfigured | Query below: who, which route    |
+| Alarm | Fires when | Meaning | First thing to check |
+|---|---|---|---|
+| `campuspulse-api-5xx` | 1+ server errors in 5 min | The API failed a request | Lambda log groups, newest first |
+| `campuspulse-ingest-lambda-errors` | 1+ crashes in 5 min | The ingest function threw an unhandled error or timed out | `/aws/lambda/campuspulse-ingest` |
+| `campuspulse-query-lambda-errors` | same | Same, read side | `/aws/lambda/campuspulse-query` |
+| `campuspulse-access-denied-spike` | 5+ refused requests (403) in 5 min | Someone is probing routes their role cannot use, or a client is misconfigured | Query below: who, which route |
 
 "No data" counts as healthy, so a quiet system does not alarm. Alarms also email when they
 return to OK. **Important:** AWS emails a subscription confirmation to the address in
@@ -55,24 +55,24 @@ filter @type = "REPORT" and ispresent(@initDuration) | stats count() as coldStar
 
 3. Match the symptom to the cause:
 
-| Symptom                                    | Likely cause                                                                 |
-| ------------------------------------------ | ---------------------------------------------------------------------------- |
-| 5xx and Lambda `Errors` both up            | Bug or timeout in a function: read the stack trace                           |
-| 5xx up, Lambda errors flat                 | API Gateway could not reach or invoke the function (permissions, deployment) |
-| Many 4xx, few 5xx                          | Clients sending bad data (see `event_rejected`) or bad/expired tokens (401)  |
-| 403 spike                                  | Role misuse or probing (see `access_denied`)                                 |
-| Throttled writes in DynamoDB               | Load far beyond the prototype; see the scalability section                   |
-| Lambda duration jumps right after a deploy | Cold starts; check `@initDuration`                                           |
+| Symptom | Likely cause |
+|---|---|
+| 5xx and Lambda `Errors` both up | Bug or timeout in a function: read the stack trace |
+| 5xx up, Lambda errors flat | API Gateway could not reach or invoke the function (permissions, deployment) |
+| Many 4xx, few 5xx | Clients sending bad data (see `event_rejected`) or bad/expired tokens (401) |
+| 403 spike | Role misuse or probing (see `access_denied`) |
+| Throttled writes in DynamoDB | Load far beyond the prototype; see the scalability section |
+| Lambda duration jumps right after a deploy | Cold starts; check `@initDuration` |
 
 ## Free-tier accounting (for the Cost Analysis section)
 
-| Item                              | We use                          | CloudWatch free tier (verify current terms) |
-| --------------------------------- | ------------------------------- | ------------------------------------------- |
-| Alarms                            | 4                               | 10                                          |
-| Dashboards                        | 1 (about 22 metrics)            | 3 dashboards, 50 metrics each               |
-| Custom metrics (from log filters) | 2                               | 10                                          |
-| Log ingestion                     | well under 1 GB for the project | 5 GB per month                              |
-| SNS email notifications           | a handful                       | 1,000 per month                             |
+| Item | We use | CloudWatch free tier (verify current terms) |
+|---|---|---|
+| Alarms | 4 | 10 |
+| Dashboards | 1 (about 22 metrics) | 3 dashboards, 50 metrics each |
+| Custom metrics (from log filters) | 2 | 10 |
+| Log ingestion | well under 1 GB for the project | 5 GB per month |
+| SNS email notifications | a handful | 1,000 per month |
 
 ## Demonstrating it live (screenshots and demo)
 

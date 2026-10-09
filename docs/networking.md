@@ -5,14 +5,14 @@ Code: `infra/network.tf`.
 
 ## What was built
 
-| Component                       | Setting                                                                   | Purpose                                                      |
-| ------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| VPC                             | `10.0.0.0/16`, DNS enabled                                                | Our own isolated network inside AWS                          |
-| Private subnet A                | `10.0.1.0/24`, Availability Zone 1                                        | Home of the Lambda network interfaces                        |
-| Private subnet B                | `10.0.2.0/24`, Availability Zone 2                                        | Same, in a second data centre (high availability)            |
-| Route table                     | **no routes** except the DynamoDB endpoint                                | The network's map: nothing leads to the internet             |
-| Gateway VPC endpoint (DynamoDB) | free, with an endpoint policy                                             | The only way out, private, never touches the public internet |
-| Security group                  | **0 inbound rules**; 1 outbound rule: TCP 443 to the DynamoDB prefix list | Firewall on the Lambdas                                      |
+| Component | Setting | Purpose |
+|---|---|---|
+| VPC | `10.0.0.0/16`, DNS enabled | Our own isolated network inside AWS |
+| Private subnet A | `10.0.1.0/24`, Availability Zone 1 | Home of the Lambda network interfaces |
+| Private subnet B | `10.0.2.0/24`, Availability Zone 2 | Same, in a second data centre (high availability) |
+| Route table | **no routes** except the DynamoDB endpoint | The network's map: nothing leads to the internet |
+| Gateway VPC endpoint (DynamoDB) | free, with an endpoint policy | The only way out, private, never touches the public internet |
+| Security group | **0 inbound rules**; 1 outbound rule: TCP 443 to the DynamoDB prefix list | Firewall on the Lambdas |
 
 Deliberately absent: Internet Gateway, NAT Gateway, public subnets, public IPs.
 
@@ -41,13 +41,13 @@ Consequences worth stating in the report:
 
 ## Cost reasoning
 
-| Option                                                | Approx. cost                                         | Decision                      |
-| ----------------------------------------------------- | ---------------------------------------------------- | ----------------------------- |
-| NAT Gateway (lets private subnets reach the internet) | ~$0.045/hour + data, about $33/month                 | **Avoided**: not needed       |
-| Interface endpoints (for SNS, CloudWatch API, etc.)   | ~$0.01/hour per AZ per endpoint, about $7/month each | **Avoided**: not needed today |
-| Gateway endpoint for DynamoDB                         | free                                                 | **Used**                      |
-| VPC, subnets, route tables, security groups           | free                                                 | Used                          |
-| Lambda network interfaces                             | no extra charge (shared "Hyperplane" interfaces)     | Used                          |
+| Option | Approx. cost | Decision |
+|---|---|---|
+| NAT Gateway (lets private subnets reach the internet) | ~$0.045/hour + data, about $33/month | **Avoided**: not needed |
+| Interface endpoints (for SNS, CloudWatch API, etc.) | ~$0.01/hour per AZ per endpoint, about $7/month each | **Avoided**: not needed today |
+| Gateway endpoint for DynamoDB | free | **Used** |
+| VPC, subnets, route tables, security groups | free | Used |
+| Lambda network interfaces | no extra charge (shared "Hyperplane" interfaces) | Used |
 
 (Prices are approximate and region-dependent: verify on the AWS pricing pages before quoting
 numbers in the report.)

@@ -68,6 +68,15 @@ def test_dynamodb_is_on_demand_with_expiry(resources):
     assert "ttl" in table
 
 
+def test_point_in_time_recovery_stays_off_to_remain_inside_the_free_tier(resources):
+    (table,) = of_type(resources, "aws_dynamodb_table").values()
+    for block in table.get("point_in_time_recovery", []):
+        assert block.get("enabled") is False, (
+            "PITR is billed per GB and is not in the Free Tier. It is a documented design decision "
+            "to leave it off in the prototype (docs/resilience.md); update the report if you enable it."
+        )
+
+
 def test_api_is_throttled_and_the_simulator_has_a_daily_quota(resources):
     assert of_type(resources, "aws_api_gateway_method_settings")
     assert "quota_settings" in next(iter(of_type(resources, "aws_api_gateway_usage_plan").values()))

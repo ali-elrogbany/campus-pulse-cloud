@@ -1,0 +1,20 @@
+Phase 1/2 STEADY: 300 requests at 8 per second ...
+
+STEADY LOAD: PASSED
+  requests sent:      300 in 37.4 s (8.0 requests/s)
+  HTTP 201:            300  stored
+  server errors 5xx:  0
+  latency (stored):   p50 45 ms   p95 57 ms   p99 70 ms   max 120 ms
+
+Phase 2/2 BURST: 200 requests, 25 at a time, no pacing ...
+
+BURST (OVERLOAD): FAILED
+  requests sent:      200 in 3.2 s (62.1 requests/s)
+  HTTP 201:             16  stored
+  HTTP 429:             30  throttled (refused by API Gateway)
+  HTTP 500:            154  
+  server errors 5xx:  154
+  latency (stored):   p50 2879 ms   p95 3205 ms   p99 3205 ms   max 3205 ms
+  latency (refused):  p50 13 ms  (rejected before reaching Lambda)
+
+Now look at the dashboard: API requests, 4XX errors (the 429s) and Lambda duration. 5XX should be flat at zero.
